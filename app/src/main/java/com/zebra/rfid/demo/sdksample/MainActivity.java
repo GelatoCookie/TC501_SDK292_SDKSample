@@ -4,8 +4,11 @@ import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -13,17 +16,22 @@ import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.RadioButton;
+import android.widget.ProgressBar;
 import android.widget.RadioGroup;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
+import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.snackbar.Snackbar;
 import com.zebra.rfid.api3.ENUM_TAGQUIET_MASK;
 import com.zebra.rfid.api3.INVENTORY_STATE;
 import com.zebra.rfid.api3.MEMORY_BANK;
@@ -44,7 +52,8 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity implements RFIDHandler.ResponseHandlerInterface {
 
     public TextView statusTextViewRFID = null;
-    public TextView textrfid , scanResult;
+    private ProgressBar progressBar;
+    public TextView textrfid, scanResult;
     public EditText tagIdEditText, passwordEditText;
     public TARGET target;
     public STATE_AWARE_ACTION stateAwareAction;
@@ -53,14 +62,29 @@ public class MainActivity extends AppCompatActivity implements RFIDHandler.Respo
     RFIDHandler rfidHandler;
     final static String TAG = "RFID_SAMPLE";
     public static SDKHandler sdkHandler;
-    private static final int BLUETOOTH_PERMISSION_REQUEST_CODE = 100;
+
+    private final ActivityResultLauncher<String[]> requestPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
+                Boolean bluetoothScan = result.getOrDefault(Manifest.permission.BLUETOOTH_SCAN, false);
+                Boolean bluetoothConnect = result.getOrDefault(Manifest.permission.BLUETOOTH_CONNECT, false);
+                if (Boolean.TRUE.equals(bluetoothConnect)) {
+                    rfidHandler.onCreate(this);
+                } else {
+                    Toast.makeText(this, R.string.permission_not_granted, Toast.LENGTH_SHORT).show();
+                }
+            });
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        Toolbar toolbar = findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
+
         // RFID Handler
         statusTextViewRFID = (TextView) findViewById(R.id.textViewStatusrfid);
+        progressBar = findViewById(R.id.progressBar);
         textrfid = (TextView) findViewById(R.id.edittextrfid);
         scanResult = (TextView) findViewById(R.id.scanResult);
         tagIdEditText= findViewById(R.id.tagId);
@@ -97,33 +121,15 @@ public class MainActivity extends AppCompatActivity implements RFIDHandler.Respo
         });
         //Scanner Initializations
         //Handling Runtime BT permissions for Android 12 and higher
-        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S){
-            if (ContextCompat.checkSelfPermission(this,
-                    Manifest.permission.BLUETOOTH_CONNECT)
-                    != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this,
-                        new String[]{Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT}, BLUETOOTH_PERMISSION_REQUEST_CODE);
-            }else{
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissionLauncher.launch(new String[]{Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT});
+            } else {
                 rfidHandler.onCreate(this);
             }
-
-        }else{
+        } else {
             rfidHandler.onCreate(this);
         }
-
-    }
-
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-
-        if(requestCode == BLUETOOTH_PERMISSION_REQUEST_CODE){
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                rfidHandler.onCreate(this);
-            }
-            else {
-                Toast.makeText(this, "Bluetooth Permissions not granted", Toast.LENGTH_SHORT).show();
-            }
-        }
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
 
     @Override
@@ -140,72 +146,48 @@ public class MainActivity extends AppCompatActivity implements RFIDHandler.Respo
         // as you specify a parent activity in AndroidManifest.xml.
         int id = item.getItemId();
 
-        //noinspection SimplifiableIfStatement
-//        if (id == R.id.antenna_settings) {
-//            String result = rfidHandler.Test1();
-//            Toast.makeText(this,result,Toast.LENGTH_SHORT).show();
-//            return true;
-//        }
-//
-//        if (id == R.id.Singulation_control) {
-//            String result = rfidHandler.Test2();
-//            Toast.makeText(this,result,Toast.LENGTH_SHORT).show();
-//            return true;
-//        }
-//        if (id == R.id.Default) {
-//            String result = rfidHandler.Defaults();
-//            Toast.makeText(this,result,Toast.LENGTH_SHORT).show();
-//            return true;
-//        }
-        if (id == R.id.enableImpinjVisiblity){
+        if (id == R.id.enableImpinjVisiblity) {
             String result = rfidHandler.enableImpinjVisibility();
-            Toast.makeText(this,result,Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, result, Toast.LENGTH_SHORT).show();
             return true;
         }
 
-        if (id  == R.id.enableImpinjProtect){
+        if (id == R.id.enableImpinjProtect) {
             String result = rfidHandler.enableImpinjProtection();
-            Toast.makeText(this,result,Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, result, Toast.LENGTH_SHORT).show();
             return true;
         }
 
-        if (id  == R.id.disableImpinjVisiblity){
+        if (id == R.id.disableImpinjVisiblity) {
             String result = rfidHandler.disableImpinjVisibilty();
-            Toast.makeText(this,result,Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, result, Toast.LENGTH_SHORT).show();
             return true;
         }
 
-        if (id == R.id.disableImpinjProtect){
+        if (id == R.id.disableImpinjProtect) {
             String result = rfidHandler.disableImpinjProtection();
-            Toast.makeText(this,result,Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, result, Toast.LENGTH_SHORT).show();
             return true;
         }
 
-        if(id == R.id.tagFocus){
+        if (id == R.id.tagFocus) {
             showTagFocusDialog();
             return true;
         }
-        if(id == R.id.tagQuiet){
+        if (id == R.id.tagQuiet) {
             String result = showCustomTagQuietDialog();
-
-            Toast.makeText(this,result,Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, result, Toast.LENGTH_SHORT).show();
             return true;
         }
 
-//        if (id == R.id.removetagQuiet){
-//            String result = rfidHandler.removeTagQuiet();
-//            Toast.makeText(this,result,Toast.LENGTH_SHORT).show();
-//            return true;
-//        }
-
-        if(id == R.id.singulation){
+        if (id == R.id.singulation) {
             String result = showCustomSingulation();
-            Toast.makeText(this,result,Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, result, Toast.LENGTH_SHORT).show();
             return true;
         }
-        if(id == R.id.prefilter){
+        if (id == R.id.prefilter) {
             showPrefilterDialog();
-            return  true;
+            return true;
         }
 
 
@@ -222,8 +204,17 @@ public class MainActivity extends AppCompatActivity implements RFIDHandler.Respo
     @Override
     protected void onPostResume() {
         super.onPostResume();
+        clearStatusMessages();
+        updateTitleWithSdkVersion(rfidHandler.getVersionInfo());
         String result = rfidHandler.onResume();
-        statusTextViewRFID.setText(result);
+        UpdateUI_statusTextViewRFID(result);
+
+    }
+
+    public void updateTitleWithSdkVersion(String version) {
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setTitle(getString(R.string.app_name) + " (SDK: " + version + ")");
+        }
     }
 
     @Override
@@ -232,11 +223,84 @@ public class MainActivity extends AppCompatActivity implements RFIDHandler.Respo
         rfidHandler.onDestroy();
     }
 
+    private final StringBuilder statusBuffer = new StringBuilder();
+    private final Handler statusHandler = new Handler(Looper.getMainLooper());
+    private Runnable showStatusRunnable;
+
+    public void UpdateUI_statusTextViewRFID(final String status) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Log.d(TAG, "statusTextViewRFID " + status);
+
+                if (status != null && !status.isEmpty()) {
+                    statusTextViewRFID.setText(status);
+                    if (statusBuffer.indexOf(status) == -1) {
+                        statusBuffer.append(status).append("\n");
+                    }
+                    // Hide progress bar when we get a status update
+                    showProgress(false);
+
+                    if (showStatusRunnable != null) {
+                        statusHandler.removeCallbacks(showStatusRunnable);
+                    }
+                    showStatusRunnable = MainActivity.this::showStatusDialog;
+                    statusHandler.postDelayed(showStatusRunnable, 500);
+                }
+            }
+        });
+    }
+
+    public void clearStatusMessages() {
+        statusBuffer.setLength(0);
+    }
+
+    public void showStatusDialog() {
+        runOnUiThread(() -> {
+            if (statusBuffer.length() > 0) {
+                AlertDialog dialog = new MaterialAlertDialogBuilder(MainActivity.this)
+                        .setTitle(R.string.dialog_title_rfid_status)
+                        .setIcon(android.R.drawable.ic_dialog_info)
+                        .setMessage(statusBuffer.toString().trim())
+                        .setPositiveButton(android.R.string.ok, (d, which) -> clearStatusMessages())
+                        .setOnDismissListener(d -> clearStatusMessages())
+                        .show();
+
+                // Auto-dismiss after 2 seconds
+                new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                    try {
+                        if (dialog.isShowing() && !isFinishing()) {
+                            dialog.dismiss();
+                        }
+                    } catch (Exception ignored) {}
+                }, 2000);
+            }
+        });
+    }
+
+    public void showProgress(boolean show) {
+        runOnUiThread(() -> {
+            if (progressBar != null) {
+                progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
+            }
+        });
+    }
+
     public void StartInventory(View view)
     {
         textrfid.setText("");
         rfidHandler.performInventory();
         //   rfidHandler.MultiTag();
+    }
+
+    public void connectReader(View view) {
+        clearStatusMessages();
+        rfidHandler.performConnect();
+    }
+
+    public void disconnectReader(View view) {
+        clearStatusMessages();
+        rfidHandler.performDisconnect();
     }
     public void scanCode(View view){
         rfidHandler.scanCode();
@@ -246,7 +310,7 @@ public class MainActivity extends AppCompatActivity implements RFIDHandler.Respo
 
 
     public void testFunction(View view){
-        rfidHandler.testFunction();
+        //rfidHandler.testFunction();
     }
 
     public void StopInventory(View view){
@@ -256,15 +320,15 @@ public class MainActivity extends AppCompatActivity implements RFIDHandler.Respo
     @Override
     public void handleTagdata(TagData[] tagData) {
         final StringBuilder sb = new StringBuilder();
-        for (int index = 0; index < tagData.length; index++) {
-            sb.append(tagData[index].getTagID() + " ,   "+tagData[index].getPeakRSSI()+ "\n");
+        for (TagData tag : tagData) {
+            String epc = tag.getTagID();
+            String rssi = String.valueOf(tag.getPeakRSSI());
+
+            // Format as a professional row: EPC [padding] RSSI [dBm]
+            // %-26s aligns EPC to the left, %4s aligns RSSI to the right
+            sb.append(String.format("%-26s %5s dBm\n", epc, rssi));
         }
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                textrfid.append(sb.toString());
-            }
-        });
+        runOnUiThread(() -> textrfid.append(sb.toString()));
     }
 
     @Override
@@ -297,10 +361,9 @@ public class MainActivity extends AppCompatActivity implements RFIDHandler.Respo
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                Toast.makeText(MainActivity.this,val,Toast.LENGTH_SHORT).show();
+                Snackbar.make(findViewById(android.R.id.content), val, Snackbar.LENGTH_LONG).show();
             }
         });
-
     }
 
 
