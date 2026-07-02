@@ -601,7 +601,7 @@ class RFIDHandler implements IDcsSdkApiDelegate, Readers.RFIDReaderEventHandler 
         if (readers != null) {
             return BuildConfig.VERSION_NAME;
         }
-        return "Unknown";
+        return "292";
     }
 
     private void reportError(Throwable t) {
